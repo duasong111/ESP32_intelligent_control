@@ -17,6 +17,11 @@
 #### 🔌 硬件层面
 - ESP32微控制器（双核240MHz处理器）
 - Wi-Fi & 蓝牙双无线连接
+- 🎨 RGB LED全彩小灯（16百万色）
+- 🔊 蜂鸣器（音频反馈）
+- 📡 HC-SR04超声波模块（距离测量）
+- 🖥️ 240×240 IPS彩色屏幕（实时显示）
+- 🌡️ DHT11温湿度传感器
 - 多路GPIO输入输出
 - ADC/DAC模拟处理
 - 低功耗设计
@@ -66,6 +71,8 @@
 ```
 ESP32_intelligent_control/
 ├── 硬件设计相关文件
+│   ├── code/
+│   │   └── v1.1.c                      # ESP32固件代码 (v1.1版本)
 │   ├── Image/
 │   │   ├── schematic_diagram.png        # 原理图
 │   │   ├── PCB_PCB1_2026-04-06.pdf     # PCB设计
@@ -104,21 +111,42 @@ ESP32_intelligent_control/
 主要核心器件：
 - ESP32微控制器 ×1
 - AMS1117-3.3稳压芯片 ×1
+- 240×240 IPS彩色屏幕 ×1
+- RGB LED（全彩小灯）×1
+- 蜂鸣器 ×1
+- HC-SR04超声波模块 ×1
+- DHT11温湿度传感器 ×1
 - 电源管理和外围电路
 
 #### 1.2 电路组装
-参考原理图和PCB设计：
+按照PCB原理图焊接即可，关键引脚连接：
 - [原理图：schematic_diagram.png](Image/schematic_diagram.png)
 - [PCB设计：PCB_PCB1_2026-04-06.pdf](Image/PCB_PCB1_2026-04-06.pdf)
 
+**关键引脚配置：**
+| 设备 | GPIO引脚 | 功能说明 |
+|------|---------|--------|
+| DHT11温湿度 | GPIO27 | 数据引脚 |
+| 超声波TRIG | GPIO13 | 触发信号 |
+| 超声波ECHO | GPIO12 | 回复信号 |
+| RGB红 | GPIO14 | 红色通道 |
+| RGB绿 | GPIO15 | 绿色通道 |
+| RGB蓝 | GPIO16 | 蓝色通道 |
+| 蜂鸣器 | GPIO25 | 音频输出 |
+| TFT屏幕 | SPI | 使用TFT_eSPI库 |
+
 #### 1.3 烧写固件
+使用固件文件：[code/v1.1.c](code/v1.1.c)
+
 详见下方"ESP32固件烧写"章节
 
 #### 1.4 硬件调试
-确保以下指示灯正常工作：
-- 电源指示灯（绿色）✓
-- 通信指示灯（蓝色）✓
-- 工作状态灯（红色）✓
+确保以下功能正常工作：
+- 电源指示灯正常亮起 ✓
+- 屏幕显示正常（240×240分辨率）✓
+- RGB灯可调整颜色亮度 ✓
+- 蜂鸣器能发声 ✓
+- 超声波模块能测距 ✓
 
 ---
 
@@ -258,7 +286,7 @@ flutter run -d <device_id>
 
 #### 4.2 使用Arduino IDE烧写
 
-**安装ESP32支持：**
+**安装ESP32支持和依赖库：**
 1. 打开Arduino IDE → 文件 → 偏好设置
 2. 附加开发板管理器网址添加：
    ```
@@ -266,38 +294,78 @@ flutter run -d <device_id>
    ```
 3. 工具 → 开发板 → 开发板管理器 → 搜索"ESP32" → 安装
 
+**安装必要的库（Sketch → Include Library → Manage Libraries）：**
+- `TFT_eSPI` - IPS屏幕驱动库
+- `DHT` - DHT11温湿度传感器库
+- `PubSubClient` - MQTT客户端库
+- `ArduinoJson` - JSON处理库
+- `HTTPClient` - HTTP客户端库
+
 **烧写步骤：**
+1. 打开本项目固件文件：`code/v1.1.c`
+2. 修改WiFi配置（第13-14行）：
+   ```cpp
+   const char *ssid     = "your_wifi_name";      // 改成你的WiFi名
+   const char *password = "your_wifi_password";  // 改成你的WiFi密码
+   ```
+3. 选择开发板：工具 → 开发板 → ESP32 Dev Module
+4. 选择串口：工具 → 端口 → /dev/ttyUSB0（或对应端口）
+5. 设置波特率：115200
+6. 点击上传按钮或按Ctrl+U烧写
+
+**完整烧写示例代码流程：**
 ```cpp
-// 示例代码：连接Wi-Fi并启动服务
-#include <WiFi.h>
-#include <WebServer.h>
+// v1.1.c 固件主要功能流程
+#include <TFT_eSPI.h>      // IPS屏幕
+#include <DHT.h>            // 温湿度传感器
+#include <WiFi.h>           // WiFi连接
+#include <PubSubClient.h>  // MQTT
+#include <ArduinoJson.h>   // JSON处理
 
-const char* ssid = "your_ssid";
-const char* password = "your_password";
-WebServer server(8000);
-
-void handleRoot() {
-  server.send(200, "application/json", "{\"status\":\"ok\"}");
-}
+// 初始化各模块
+TFT_eSPI tft = TFT_eSPI();     // 240×240屏幕
+DHT dht(27, DHT11);             // DHT11：GPIO27
 
 void setup() {
   Serial.begin(115200);
-  WiFi.begin(ssid, password);
   
+  // 初始化屏幕
+  tft.init();
+  tft.setRotation(0);
+  tft.fillScreen(TFT_BLACK);
+  
+  // 初始化传感器
+  dht.begin();
+  
+  // 连接WiFi
+  WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
-  
   Serial.println("\nWi-Fi connected!");
   Serial.println(WiFi.localIP());
   
-  server.on("/", handleRoot);
-  server.begin();
+  // MQTT连接
+  client.setServer(mqtt_server, mqtt_port);
 }
 
 void loop() {
-  server.handleClient();
+  // 读取温湿度
+  float temp = dht.readTemperature();
+  float humidity = dht.readHumidity();
+  
+  // 测量距离（超声波）
+  float distance = measureDistance();
+  
+  // 屏幕显示
+  tft.setTextColor(TFT_WHITE);
+  tft.drawString("Temp: " + String(temp) + "C", 10, 10);
+  
+  // MQTT发布数据
+  publishSensorData(temp, humidity, distance);
+  
+  delay(1000);
 }
 ```
 
@@ -311,12 +379,59 @@ board = esp32doit-devkit-v1
 framework = arduino
 monitor_speed = 115200
 upload_speed = 460800
+
+; 依赖库
+lib_deps = 
+    TFT_eSPI
+    DHT sensor library
+    PubSubClient
+    ArduinoJson
 ```
 
 **构建和烧写：**
 ```bash
+# 复制固件文件到src目录
+cp code/v1.1.c src/main.cpp
+
+# 修改WiFi配置
+# 编辑 src/main.cpp 第13-14行的WiFi信息
+
+# 编译和上传
 pio run --target upload --environment esp32
+
+# 查看串口输出
+pio device monitor --baud 115200
 ```
+
+---
+
+## 📋 固件功能说明
+
+本项目使用 **v1.1.c** 固件，主要功能包括：
+
+### 固件特性
+- ✅ Wi-Fi自动连接（SSID: raspberry）
+- ✅ MQTT消息发布/订阅
+- ✅ DHT11温湿度实时采集
+- ✅ HC-SR04超声波距离测量
+- ✅ RGB LED全彩控制
+- ✅ 蜂鸣器音频反馈
+- ✅ 240×240 IPS屏幕实时显示
+- ✅ NTP网络时间同步
+- ✅ HTTP请求支持
+- ✅ JSON数据处理
+
+### 数据发布周期
+- 温湿度数据：每1秒采集一次
+- 距离数据：每1秒测量一次
+- 屏幕更新：实时显示
+- MQTT发布Topic: `sensor/data`
+
+### 控制命令
+- RGB灯色调控制
+- 蜂鸣器开关控制
+- 屏幕显示内容控制
+- 订阅Topic: `control/esp32`
 
 ---
 
@@ -463,19 +578,34 @@ ws://192.168.18.155:8000/esp32/data
 
 | 图片 | 说明 |
 |------|------|
-| ![Original Design](Image/schematic_diagram.png) | **原理图设计** - 电子电路设计 |
-| ![实物1](Image/physical_object1.jpg) | **产品正面图** - 设备全貌 |
-| ![实物2](Image/physical_object2.jpg) | **产品侧面图** - 接口布局 |
-| ![实物3](Image/physical_object3.jpg) | **接口细节图** - GPIO引脚排列 |
-| ![实物4](Image/physical_object4.jpg) | **工作状态图** - 实际运行效果 |
+| ![Original Design](Image/schematic_diagram.png) | **原理图设计** - 完整电子电路设计 |
+| ![实物1](Image/physical_object1.jpg) | **产品正面图** - 240×240 IPS屏幕显示 |
+| ![实物2](Image/physical_object2.jpg) | **产品侧面图** - 蜂鸣器和传感器接口 |
+| ![实物3](Image/physical_object3.jpg) | **接口细节图** - GPIO引脚和RGB灯 |
+| ![实物4](Image/physical_object4.jpg) | **工作状态图** - 实际运行效果演示 |
+
+### 核心功能模块
+
+| 功能 | 硬件模块 | 引脚 | 说明 |
+|------|--------|------|------|
+| 🖥️ 显示 | 240×240 IPS屏幕 | SPI | 彩色实时显示 |
+| 🌡️ 温湿度 | DHT11传感器 | GPIO27 | 环境监测 |
+| 📡 距离测量 | HC-SR04超声波 | GPIO13/12 | 障碍物检测 |
+| 🎨 RGB灯 | 全彩LED | GPIO14/15/16 | 颜色指示 |
+| 🔊 声音 | 蜂鸣器 | GPIO25 | 音频反馈 |
+| 📶 通信 | WiFi + MQTT | 内置 | 远程控制 |
 
 ### 应用界面预览
 
 前端应用采用现代化卡片式设计，支持以下特性：
 - ✨ 简洁现代的UI设计
 - 📱 响应式布局，完美适配各种屏幕
-- ⚡ 实时状态反馈
+- ⚡ 实时状态反馈（通过WebSocket）
 - 🎨 丰富的颜色选择器和亮度调节
+- 🌡️ 实时温湿度数据展示
+- 📏 超声波距离测量显示
+- 🔊 蜂鸣器远程控制
+- 🖥️ 设备屏幕显示同步
 
 ---
 
@@ -574,7 +704,10 @@ debugPrint('WebSocket message: $data');
 ### 软件相关
 - [前端应用仓库](https://github.com/duasong111/ESP32_view.git) - Flutter项目
 - [后端服务仓库](https://github.com/duasong111/go.git) - Go API服务
+- [固件代码](code/v1.1.c) - ESP32 v1.1版本固件
 - [ESP32官方文档](https://docs.espressif.com/) - 官方技术文档
+- [TFT_eSPI库](https://github.com/Bodmer/TFT_eSPI) - IPS屏幕驱动库
+- [DHT库](https://github.com/adafruit/DHT-sensor-library) - 温湿度传感器库
 
 ---
 
@@ -724,7 +857,7 @@ git commit -m "fix: resolve WebSocket connection timeout"
 
 <div align="center">
 
-**Created by 杜阿松** | 📧 [2272168170@qq.com](mailto:2272168170@qq.com)
+**Created by 大喇叭** | 📧 [2272168170@qq.com](mailto:2272168170@qq.com)
 
 ⭐ 如果这个项目对你有帮助，请给个Star！
 
