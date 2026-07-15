@@ -1,0 +1,7 @@
+{
+    "idf.currentSetup": "/Users/duasong/.espressif/v6.0.2/esp-idf",
+    "idf.port": "/dev/tty.usbmodem1101",
+    "idf.openOcdConfigs": [
+        "board/esp32s3-builtin.cfg"
+    ]
+}
